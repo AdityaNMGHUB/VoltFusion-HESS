@@ -1,276 +1,318 @@
-// VOLT FUSION - Interactive Web Dashboard JavaScript Client
-document.addEventListener('DOMContentLoaded', () => {
-    // 1. UI Elements & Sliders
-    const inputMass = document.getElementById('param-mass');
-    const valMass = document.getElementById('val-mass');
-    const inputBatCap = document.getElementById('param-bat-cap');
-    const valBatCap = document.getElementById('val-bat-cap');
-    const inputSCCap = document.getElementById('param-sc-cap');
-    const valSCCap = document.getElementById('val-sc-cap');
-    const inputLPF = document.getElementById('param-lpf');
-    const valLPF = document.getElementById('val-lpf');
-    const selectCycle = document.getElementById('param-cycle');
-    const btnSimulate = document.getElementById('btn-simulate');
+// VOLT FUSION — Dashboard JavaScript
 
-    inputMass.addEventListener('input', () => valMass.innerText = `${inputMass.value} kg`);
-    inputBatCap.addEventListener('input', () => valBatCap.innerText = `${inputBatCap.value} Ah`);
-    inputSCCap.addEventListener('input', () => valSCCap.innerText = `${inputSCCap.value} F`);
-    inputLPF.addEventListener('input', () => valLPF.innerText = `${inputLPF.value} Hz`);
-
-    // 2. Tab Switcher
-    const tabBtns = document.querySelectorAll('.tab-btn');
-    const tabContents = document.querySelectorAll('.tab-content');
-
-    tabBtns.forEach(btn => {
-        btn.addEventListener('click', () => {
-            tabBtns.forEach(b => b.classList.remove('active'));
-            tabContents.forEach(c => c.classList.remove('active'));
-
-            btn.classList.add('active');
-            const target = document.getElementById(btn.dataset.tab);
-            if (target) target.classList.add('active');
-        });
-    });
-
-    // 3. Chart Storage Objects
-    let chartObjCurrent = null;
-    let chartObjPower = null;
-    let chartObjSOCBat = null;
-    let chartObjVSC = null;
-    let chartObjLosses = null;
-    let chartObjThermal = null;
-    let chartObjDCLink = null;
-
-    // Common Dark Theme Options for Chart.js
-    const commonChartOptions = {
-        responsive: true,
-        maintainAspectRatio: false,
-        animation: { duration: 600 },
-        scales: {
-            x: {
-                grid: { color: 'rgba(255, 255, 255, 0.05)' },
-                ticks: { color: '#94a3b8' },
-                title: { display: true, text: 'Time (s)', color: '#94a3b8' }
-            },
-            y: {
-                grid: { color: 'rgba(255, 255, 255, 0.05)' },
-                ticks: { color: '#94a3b8' }
+const CHART_DEFAULTS = {
+    responsive: true,
+    maintainAspectRatio: false,
+    animation: { duration: 500, easing: 'easeInOutQuart' },
+    interaction: { mode: 'index', intersect: false },
+    plugins: {
+        legend: {
+            labels: {
+                color: '#a3a3a3',
+                font: { family: 'Inter', size: 11, weight: '500' },
+                boxWidth: 12,
+                boxHeight: 2,
+                padding: 16
             }
         },
-        plugins: {
-            legend: { labels: { color: '#f8fafc', font: { family: 'Outfit', size: 12 } } }
+        tooltip: {
+            backgroundColor: '#1f1f1f',
+            borderColor: '#333',
+            borderWidth: 1,
+            titleColor: '#f5f5f5',
+            bodyColor: '#a3a3a3',
+            titleFont: { family: 'DM Sans', size: 12, weight: '600' },
+            bodyFont: { family: 'JetBrains Mono', size: 11 },
+            padding: 12,
+            cornerRadius: 6,
+            displayColors: true,
+            boxWidth: 10,
+            boxHeight: 10
         }
+    },
+    scales: {
+        x: {
+            grid: { color: 'rgba(255,255,255,0.04)', drawBorder: false },
+            ticks: {
+                color: '#525252',
+                font: { family: 'JetBrains Mono', size: 10 },
+                maxTicksLimit: 10
+            },
+            title: {
+                display: true,
+                text: 'Time (s)',
+                color: '#525252',
+                font: { family: 'Inter', size: 11 }
+            }
+        },
+        y: {
+            grid: { color: 'rgba(255,255,255,0.04)', drawBorder: false },
+            ticks: {
+                color: '#525252',
+                font: { family: 'JetBrains Mono', size: 10 }
+            }
+        }
+    }
+};
+
+const COLORS = {
+    orange: '#f97316',
+    amber: '#f59e0b',
+    red: '#ef4444',
+    green: '#22c55e',
+    neutral: '#737373',
+    white: '#f5f5f5'
+};
+
+// Chart registry
+const charts = {};
+
+function destroyChart(id) {
+    if (charts[id]) { charts[id].destroy(); delete charts[id]; }
+}
+
+function makeChart(id, cfg) {
+    destroyChart(id);
+    const ctx = document.getElementById(id).getContext('2d');
+    charts[id] = new Chart(ctx, cfg);
+}
+
+function mkDataset(label, data, color, width = 1.5) {
+    return {
+        label,
+        data,
+        borderColor: color,
+        backgroundColor: 'transparent',
+        borderWidth: width,
+        pointRadius: 0,
+        tension: 0.2
+    };
+}
+
+// Slider bindings
+const sliders = [
+    { el: 'param-mass', out: 'val-mass', fmt: v => `${v} kg` },
+    { el: 'param-bat',  out: 'val-bat',  fmt: v => `${v} Ah` },
+    { el: 'param-sc',   out: 'val-sc',   fmt: v => `${v} F` },
+    { el: 'param-lpf',  out: 'val-lpf',  fmt: v => `${parseFloat(v).toFixed(2)} Hz` }
+];
+
+sliders.forEach(({ el, out, fmt }) => {
+    const input = document.getElementById(el);
+    const label = document.getElementById(out);
+    input.addEventListener('input', () => { label.textContent = fmt(input.value); });
+});
+
+// Tabs
+document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+        btn.classList.add('active');
+        document.getElementById(btn.dataset.tab)?.classList.add('active');
+    });
+});
+
+// ── Simulation ──────────────────────────────────────────
+async function runSimulation() {
+    const overlay = document.getElementById('loading-overlay');
+    const msg = document.getElementById('loading-msg');
+    const btn = document.getElementById('run-btn');
+
+    overlay.classList.add('visible');
+    btn.disabled = true;
+    msg.textContent = 'Running HESS simulation...';
+
+    const payload = {
+        mass: +document.getElementById('param-mass').value,
+        battery_capacity: +document.getElementById('param-bat').value,
+        supercap_capacitance: +document.getElementById('param-sc').value,
+        lpf_cutoff: +document.getElementById('param-lpf').value,
+        drive_cycle: document.getElementById('param-cycle').value
     };
 
-    // 4. Run Simulation API Trigger
-    async function runSimulation() {
-        btnSimulate.disabled = true;
-        btnSimulate.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Running Solver...';
+    try {
+        const res = await fetch('/api/simulate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (data.status === 'success') updateUI(data);
+    } catch (e) {
+        console.error(e);
+        msg.textContent = 'Error — check console.';
+    } finally {
+        overlay.classList.remove('visible');
+        btn.disabled = false;
+    }
+}
 
-        const payload = {
-            mass: parseFloat(inputMass.value),
-            battery_capacity: parseFloat(inputBatCap.value),
-            supercap_capacitance: parseFloat(inputSCCap.value),
-            lpf_cutoff: parseFloat(inputLPF.value),
-            drive_cycle: selectCycle.value
-        };
+document.getElementById('run-btn').addEventListener('click', runSimulation);
 
-        try {
-            const response = await fetch('/api/simulate', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            });
+// ── UI Update ────────────────────────────────────────────
+function updateUI(data) {
+    const { metrics: m, improvements: imp, series: s } = data;
 
-            const data = await response.json();
-            if (data.status === 'success') {
-                updateDashboard(data);
+    // KPI cards
+    setText('kpi-peak', `${m.lpf_hess.Peak_Battery_Current_A.toFixed(1)} A`);
+    setText('kpi-peak-imp', `${imp.peak_reduction_pct}% reduction vs baseline`);
+    setText('kpi-rms', `${m.lpf_hess.RMS_Battery_Current_A.toFixed(1)} A`);
+    setText('kpi-rms-imp', `${imp.rms_reduction_pct}% lower sustained stress`);
+    setText('kpi-loss', `${m.lpf_hess.Battery_Losses_kJ.toFixed(1)} kJ`);
+    setText('kpi-loss-imp', `${imp.loss_savings_pct}% electrical loss savings`);
+    setText('kpi-sc', `${m.lpf_hess.Peak_SC_Power_kW.toFixed(1)} kW`);
+    setText('kpi-temp', `${m.lpf_hess.Battery_Temp_Rise_C.toFixed(2)} °C`);
+    setText('kpi-temp-imp', `${imp.thermal_reduction_pct}% cooler pack`);
+
+    // Sidebar mini metrics
+    setText('mm-bat-peak', `${m.baseline.Peak_Battery_Current_A.toFixed(1)} A`);
+    setText('mm-hess-peak', `${m.lpf_hess.Peak_Battery_Current_A.toFixed(1)} A`);
+    setText('mm-bat-loss', `${m.baseline.Battery_Losses_kJ.toFixed(1)} kJ`);
+    setText('mm-hess-loss', `${m.lpf_hess.Battery_Losses_kJ.toFixed(1)} kJ`);
+    setText('mm-sc-power', `${m.lpf_hess.Peak_SC_Power_kW.toFixed(1)} kW`);
+    setText('mm-regen', `${m.lpf_hess.Regen_Energy_kWh.toFixed(2)} kWh`);
+
+    const t = s.time;
+
+    // Chart 1: Battery Current
+    makeChart('chart-current', {
+        type: 'line',
+        data: {
+            labels: t,
+            datasets: [
+                mkDataset(`Baseline  (Peak: ${m.baseline.Peak_Battery_Current_A.toFixed(1)} A)`, s.I_bat_baseline, 'rgba(239,68,68,0.7)', 1),
+                mkDataset(`Rule-Based (Peak: ${m.rule_based.Peak_Battery_Current_A.toFixed(1)} A)`, s.I_bat_rule, COLORS.amber, 1.2),
+                mkDataset(`LPF HESS  (Peak: ${m.lpf_hess.Peak_Battery_Current_A.toFixed(1)} A)`, s.I_bat_lpf, COLORS.orange, 2)
+            ]
+        },
+        options: {
+            ...CHART_DEFAULTS,
+            scales: {
+                ...CHART_DEFAULTS.scales,
+                y: { ...CHART_DEFAULTS.scales.y, title: { display: true, text: 'Current (A)', color: '#525252', font: { family: 'Inter', size: 11 } } }
             }
-        } catch (err) {
-            console.error('Simulation error:', err);
-        } finally {
-            btnSimulate.disabled = false;
-            btnSimulate.innerHTML = '<i class="fa-solid fa-play"></i> Run HESS Simulation';
         }
-    }
+    });
 
-    btnSimulate.addEventListener('click', runSimulation);
+    // Chart 2: Power Split
+    makeChart('chart-power', {
+        type: 'line',
+        data: {
+            labels: t,
+            datasets: [
+                { ...mkDataset('Total Demand', s.power_demand_kw, 'rgba(239,68,68,0.3)', 1) },
+                mkDataset('Battery Power (Low-Freq)', s.P_bat_lpf_kw, COLORS.orange, 2),
+                mkDataset('Supercap Power (High-Freq)', s.P_supercap_kw, COLORS.green, 1.5)
+            ]
+        },
+        options: {
+            ...CHART_DEFAULTS,
+            scales: { ...CHART_DEFAULTS.scales, y: { ...CHART_DEFAULTS.scales.y, title: { display: true, text: 'Power (kW)', color: '#525252', font: { family: 'Inter', size: 11 } } } }
+        }
+    });
 
-    // 5. Update UI Dashboard & Render Charts
-    function updateDashboard(data) {
-        const m = data.metrics;
-        const imp = data.improvements;
-        const s = data.series;
+    // Chart 3: SOC Battery
+    makeChart('chart-soc-bat', {
+        type: 'line',
+        data: {
+            labels: t,
+            datasets: [
+                mkDataset('Battery-Only SOC (%)', s.SOC_bat_baseline, 'rgba(239,68,68,0.7)', 1.2),
+                mkDataset('HESS LPF SOC (%)', s.SOC_bat_lpf, COLORS.orange, 2)
+            ]
+        },
+        options: {
+            ...CHART_DEFAULTS,
+            scales: { ...CHART_DEFAULTS.scales, y: { ...CHART_DEFAULTS.scales.y, title: { display: true, text: 'SOC (%)', color: '#525252', font: { family: 'Inter', size: 11 } } } }
+        }
+    });
 
-        // Update KPI Cards
-        document.getElementById('kpi-peak-current').innerText = `${m.lpf_hess.Peak_Battery_Current_A.toFixed(1)} A`;
-        document.getElementById('kpi-peak-red').innerText = `${imp.peak_reduction_pct}%`;
+    // Chart 4: Supercap Voltage
+    makeChart('chart-vsc', {
+        type: 'line',
+        data: {
+            labels: t,
+            datasets: [mkDataset('SC Terminal Voltage (V)', s.V_supercap, COLORS.amber, 1.5)]
+        },
+        options: {
+            ...CHART_DEFAULTS,
+            scales: { ...CHART_DEFAULTS.scales, y: { ...CHART_DEFAULTS.scales.y, title: { display: true, text: 'Voltage (V)', color: '#525252', font: { family: 'Inter', size: 11 } } } }
+        }
+    });
 
-        document.getElementById('kpi-rms-current').innerText = `${m.lpf_hess.RMS_Battery_Current_A.toFixed(1)} A`;
-        document.getElementById('kpi-rms-red').innerText = `${imp.rms_reduction_pct}%`;
+    // Chart 5: Losses
+    makeChart('chart-losses', {
+        type: 'line',
+        data: {
+            labels: t,
+            datasets: [
+                mkDataset(`Baseline (${m.baseline.Battery_Losses_kJ.toFixed(1)} kJ)`, s.Loss_bat_baseline_kj, 'rgba(239,68,68,0.7)', 1.2),
+                mkDataset(`HESS LPF (${m.lpf_hess.Battery_Losses_kJ.toFixed(1)} kJ)`, s.Loss_bat_lpf_kj, COLORS.orange, 2)
+            ]
+        },
+        options: {
+            ...CHART_DEFAULTS,
+            scales: { ...CHART_DEFAULTS.scales, y: { ...CHART_DEFAULTS.scales.y, title: { display: true, text: 'Cumulative Loss (kJ)', color: '#525252', font: { family: 'Inter', size: 11 } } } }
+        }
+    });
 
-        document.getElementById('kpi-losses').innerText = `${m.lpf_hess.Battery_Losses_kJ.toFixed(1)} kJ`;
-        document.getElementById('kpi-loss-red').innerText = `${imp.loss_savings_pct}%`;
+    // Chart 6: Thermal
+    makeChart('chart-temp', {
+        type: 'line',
+        data: {
+            labels: t,
+            datasets: [
+                mkDataset(`Baseline (+${m.baseline.Battery_Temp_Rise_C.toFixed(2)} °C)`, s.T_bat_baseline, 'rgba(239,68,68,0.7)', 1.2),
+                mkDataset(`HESS LPF (+${m.lpf_hess.Battery_Temp_Rise_C.toFixed(2)} °C)`, s.T_bat_lpf, COLORS.orange, 2)
+            ]
+        },
+        options: {
+            ...CHART_DEFAULTS,
+            scales: { ...CHART_DEFAULTS.scales, y: { ...CHART_DEFAULTS.scales.y, title: { display: true, text: 'Temperature (°C)', color: '#525252', font: { family: 'Inter', size: 11 } } } }
+        }
+    });
 
-        document.getElementById('kpi-sc-power').innerText = `${m.lpf_hess.Peak_SC_Power_kW.toFixed(1)} kW`;
+    // Chart 7: DC Bus
+    makeChart('chart-dc', {
+        type: 'line',
+        data: {
+            labels: t,
+            datasets: [mkDataset('DC Bus Voltage (V)', s.V_dclink, COLORS.amber, 1.5)]
+        },
+        options: {
+            ...CHART_DEFAULTS,
+            scales: { ...CHART_DEFAULTS.scales, y: { ...CHART_DEFAULTS.scales.y, min: 390, max: 410, title: { display: true, text: 'Voltage (V)', color: '#525252', font: { family: 'Inter', size: 11 } } } }
+        }
+    });
 
-        document.getElementById('kpi-temp-rise').innerText = `${m.lpf_hess.Battery_Temp_Rise_C.toFixed(2)} °C`;
-        document.getElementById('kpi-temp-red').innerText = `${imp.thermal_reduction_pct}%`;
+    // Benchmark table
+    const tb = document.getElementById('table-body');
+    const rows = [
+        ['Peak Battery Current', `${m.baseline.Peak_Battery_Current_A.toFixed(1)} A`, `${m.rule_based.Peak_Battery_Current_A.toFixed(1)} A`, `${m.lpf_hess.Peak_Battery_Current_A.toFixed(1)} A`, `↓ ${imp.peak_reduction_pct}% reduction`],
+        ['RMS Battery Current', `${m.baseline.RMS_Battery_Current_A.toFixed(1)} A`, `${m.rule_based.RMS_Battery_Current_A.toFixed(1)} A`, `${m.lpf_hess.RMS_Battery_Current_A.toFixed(1)} A`, `↓ ${imp.rms_reduction_pct}% lower`],
+        ['Battery I²R Losses', `${m.baseline.Battery_Losses_kJ.toFixed(1)} kJ`, `${m.rule_based.Battery_Losses_kJ.toFixed(1)} kJ`, `${m.lpf_hess.Battery_Losses_kJ.toFixed(1)} kJ`, `↓ ${imp.loss_savings_pct}% savings`],
+        ['Battery Thermal Rise', `${m.baseline.Battery_Temp_Rise_C.toFixed(2)} °C`, `${m.rule_based.Battery_Temp_Rise_C.toFixed(2)} °C`, `${m.lpf_hess.Battery_Temp_Rise_C.toFixed(2)} °C`, `↓ ${imp.thermal_reduction_pct}% cooler`],
+        ['SC Peak Transient Power', '— kW', `${m.rule_based.Peak_SC_Power_kW.toFixed(1)} kW`, `${m.lpf_hess.Peak_SC_Power_kW.toFixed(1)} kW`, '↑ High buffer'],
+        ['DC Bus Ripple', `${m.baseline.DC_Bus_Ripple_V.toFixed(2)} V`, `${m.rule_based.DC_Bus_Ripple_V.toFixed(2)} V`, `${m.lpf_hess.DC_Bus_Ripple_V.toFixed(2)} V`, '✓ Stable 400V'],
+        ['Regen Recovered', `${m.baseline.Regen_Energy_kWh.toFixed(2)} kWh`, `${m.rule_based.Regen_Energy_kWh.toFixed(2)} kWh`, `${m.lpf_hess.Regen_Energy_kWh.toFixed(2)} kWh`, '✓ 100% captured']
+    ];
 
-        // Update Benchmark Table
-        const tbody = document.getElementById('table-body');
-        tbody.innerHTML = `
-            <tr>
-                <td><strong>Peak Battery Current (A)</strong></td>
-                <td>${m.baseline.Peak_Battery_Current_A.toFixed(1)} A</td>
-                <td>${m.rule_based.Peak_Battery_Current_A.toFixed(1)} A</td>
-                <td><strong style="color:#00f2fe">${m.lpf_hess.Peak_Battery_Current_A.toFixed(1)} A</strong></td>
-                <td><span class="highlight-green">-${imp.peak_reduction_pct}% Reduction</span></td>
-            </tr>
-            <tr>
-                <td><strong>RMS Battery Current (A)</strong></td>
-                <td>${m.baseline.RMS_Battery_Current_A.toFixed(1)} A</td>
-                <td>${m.rule_based.RMS_Battery_Current_A.toFixed(1)} A</td>
-                <td><strong style="color:#00f2fe">${m.lpf_hess.RMS_Battery_Current_A.toFixed(1)} A</strong></td>
-                <td><span class="highlight-green">-${imp.rms_reduction_pct}% Lower RMS</span></td>
-            </tr>
-            <tr>
-                <td><strong>Battery I²R Losses (kJ)</strong></td>
-                <td>${m.baseline.Battery_Losses_kJ.toFixed(1)} kJ</td>
-                <td>${m.rule_based.Battery_Losses_kJ.toFixed(1)} kJ</td>
-                <td><strong style="color:#00f2fe">${m.lpf_hess.Battery_Losses_kJ.toFixed(1)} kJ</strong></td>
-                <td><span class="highlight-green">-${imp.loss_savings_pct}% Loss Savings</span></td>
-            </tr>
-            <tr>
-                <td><strong>Battery Thermal Rise (°C)</strong></td>
-                <td>${m.baseline.Battery_Temp_Rise_C.toFixed(2)} °C</td>
-                <td>${m.rule_based.Battery_Temp_Rise_C.toFixed(2)} °C</td>
-                <td><strong style="color:#00f2fe">${m.lpf_hess.Battery_Temp_Rise_C.toFixed(2)} °C</strong></td>
-                <td><span class="highlight-green">-${imp.thermal_reduction_pct}% Cooler Pack</span></td>
-            </tr>
-            <tr>
-                <td><strong>Supercap Peak Power (kW)</strong></td>
-                <td>0.0 kW</td>
-                <td>${m.rule_based.Peak_SC_Power_kW.toFixed(1)} kW</td>
-                <td><strong style="color:#00f2fe">${m.lpf_hess.Peak_SC_Power_kW.toFixed(1)} kW</strong></td>
-                <td><span class="highlight-cyan">High Transient Buffer</span></td>
-            </tr>
-            <tr>
-                <td><strong>DC Bus Ripple Deviation (V)</strong></td>
-                <td>${m.baseline.DC_Bus_Ripple_V.toFixed(2)} V</td>
-                <td>${m.rule_based.DC_Bus_Ripple_V.toFixed(2)} V</td>
-                <td><strong style="color:#00f2fe">${m.lpf_hess.DC_Bus_Ripple_V.toFixed(2)} V</strong></td>
-                <td><span class="highlight-green">Stable 400V Bus</span></td>
-            </tr>
-        `;
+    tb.innerHTML = rows.map(([label, bat, rule, lpf, imp]) => `
+        <tr>
+            <td>${label}</td>
+            <td>${bat}</td>
+            <td>${rule}</td>
+            <td class="hess-best">${lpf}</td>
+            <td class="improvement">${imp}</td>
+        </tr>
+    `).join('');
+}
 
-        // Render Charts
-        // Chart 1: Current Peak Shaving
-        if (chartObjCurrent) chartObjCurrent.destroy();
-        const ctxCurrent = document.getElementById('chartCurrent').getContext('2d');
-        chartObjCurrent = new Chart(ctxCurrent, {
-            type: 'line',
-            data: {
-                labels: s.time,
-                datasets: [
-                    { label: 'Battery-Only Baseline (Peak: ' + m.baseline.Peak_Battery_Current_A.toFixed(1) + 'A)', data: s.I_bat_baseline, borderColor: '#ef4444', borderWidth: 1.2, pointRadius: 0 },
-                    { label: 'HESS Rule-Based (Peak: ' + m.rule_based.Peak_Battery_Current_A.toFixed(1) + 'A)', data: s.I_bat_rule, borderColor: '#f59e0b', borderWidth: 1.5, pointRadius: 0 },
-                    { label: 'HESS LPF Mode (Peak: ' + m.lpf_hess.Peak_Battery_Current_A.toFixed(1) + 'A)', data: s.I_bat_lpf, borderColor: '#00f2fe', borderWidth: 2, pointRadius: 0 }
-                ]
-            },
-            options: commonChartOptions
-        });
+function setText(id, val) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = val;
+}
 
-        // Chart 2: Power Allocation
-        if (chartObjPower) chartObjPower.destroy();
-        const ctxPower = document.getElementById('chartPower').getContext('2d');
-        chartObjPower = new Chart(ctxPower, {
-            type: 'line',
-            data: {
-                labels: s.time,
-                datasets: [
-                    { label: 'Total Demand P_dem (kW)', data: s.power_demand_kw, borderColor: 'rgba(239, 68, 68, 0.4)', borderWidth: 1, pointRadius: 0 },
-                    { label: 'Low-Pass Battery Power (kW)', data: s.P_bat_lpf_kw, borderColor: '#3b82f6', borderWidth: 2, pointRadius: 0 },
-                    { label: 'Transient Supercap Power (kW)', data: s.P_supercap_kw, borderColor: '#10b981', borderWidth: 1.5, pointRadius: 0 }
-                ]
-            },
-            options: commonChartOptions
-        });
-
-        // Chart 3: SOC Battery
-        if (chartObjSOCBat) chartObjSOCBat.destroy();
-        const ctxSOCBat = document.getElementById('chartSOCBat').getContext('2d');
-        chartObjSOCBat = new Chart(ctxSOCBat, {
-            type: 'line',
-            data: {
-                labels: s.time,
-                datasets: [
-                    { label: 'Battery-Only SOC (%)', data: s.SOC_bat_baseline, borderColor: '#ef4444', borderWidth: 1.5, pointRadius: 0 },
-                    { label: 'HESS LPF SOC (%)', data: s.SOC_bat_lpf, borderColor: '#00f2fe', borderWidth: 2, pointRadius: 0 }
-                ]
-            },
-            options: commonChartOptions
-        });
-
-        // Chart 4: Supercap Voltage
-        if (chartObjVSC) chartObjVSC.destroy();
-        const ctxVSC = document.getElementById('chartVSC').getContext('2d');
-        chartObjVSC = new Chart(ctxVSC, {
-            type: 'line',
-            data: {
-                labels: s.time,
-                datasets: [
-                    { label: 'Supercap Terminal Voltage (V)', data: s.V_supercap, borderColor: '#10b981', borderWidth: 2, pointRadius: 0 }
-                ]
-            },
-            options: commonChartOptions
-        });
-
-        // Chart 5: Losses
-        if (chartObjLosses) chartObjLosses.destroy();
-        const ctxLosses = document.getElementById('chartLosses').getContext('2d');
-        chartObjLosses = new Chart(ctxLosses, {
-            type: 'line',
-            data: {
-                labels: s.time,
-                datasets: [
-                    { label: 'Battery-Only Loss (kJ)', data: s.Loss_bat_baseline_kj, borderColor: '#ef4444', borderWidth: 1.5, pointRadius: 0 },
-                    { label: 'HESS LPF Loss (kJ)', data: s.Loss_bat_lpf_kj, borderColor: '#00f2fe', borderWidth: 2, pointRadius: 0 }
-                ]
-            },
-            options: commonChartOptions
-        });
-
-        // Chart 6: Thermal
-        if (chartObjThermal) chartObjThermal.destroy();
-        const ctxThermal = document.getElementById('chartThermal').getContext('2d');
-        chartObjThermal = new Chart(ctxThermal, {
-            type: 'line',
-            data: {
-                labels: s.time,
-                datasets: [
-                    { label: 'Battery-Only Temp (°C)', data: s.T_bat_baseline, borderColor: '#ef4444', borderWidth: 1.5, pointRadius: 0 },
-                    { label: 'HESS LPF Temp (°C)', data: s.T_bat_lpf, borderColor: '#00f2fe', borderWidth: 2, pointRadius: 0 }
-                ]
-            },
-            options: commonChartOptions
-        });
-
-        // Chart 7: DC Link
-        if (chartObjDCLink) chartObjDCLink.destroy();
-        const ctxDCLink = document.getElementById('chartDCLink').getContext('2d');
-        chartObjDCLink = new Chart(ctxDCLink, {
-            type: 'line',
-            data: {
-                labels: s.time,
-                datasets: [
-                    { label: '400V DC Bus Voltage (V)', data: s.V_dclink, borderColor: '#a855f7', borderWidth: 1.5, pointRadius: 0 }
-                ]
-            },
-            options: commonChartOptions
-        });
-    }
-
-    // Run initial simulation on load
-    runSimulation();
-});
+// Auto-run on load
+runSimulation();
