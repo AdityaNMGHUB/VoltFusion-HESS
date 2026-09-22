@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VOLT FUSION | Hybrid Energy Storage & Intelligent Power Management Dashboard</title>
+    <!-- Google Fonts & Chart.js -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- TOP HEADER -->
+        <header class="navbar">
+            <div class="brand">
+                <div class="brand-icon"><i class="fa-solid fa-bolt-lightning"></i></div>
+                <div>
+                    <h1>VOLT FUSION</h1>
+                    <p class="subtitle">Hybrid Energy Storage & Power Management System</p>
+                </div>
+            </div>
+            <div class="header-badges">
+                <span class="badge badge-cyan"><i class="fa-solid fa-car-side"></i> EV Powertrain</span>
+                <span class="badge badge-purple"><i class="fa-solid fa-microchip"></i> LPF EMS Active</span>
+                <span class="badge badge-green"><i class="fa-solid fa-signal"></i> 400V DC Link</span>
+            </div>
+        </header>
+
+        <!-- KPI SUMMARY CARDS -->
+        <section class="kpi-grid">
+            <div class="kpi-card glow-cyan">
+                <div class="kpi-header">
+                    <span>Peak Battery Current</span>
+                    <i class="fa-solid fa-wave-square"></i>
+                </div>
+                <div class="kpi-value" id="kpi-peak-current">81.5 A</div>
+                <div class="kpi-sub highlight-green"><i class="fa-solid fa-arrow-down"></i> <span id="kpi-peak-red">47.4%</span> Reduction</div>
+            </div>
+
+            <div class="kpi-card glow-blue">
+                <div class="kpi-header">
+                    <span>RMS Battery Current</span>
+                    <i class="fa-solid fa-chart-line"></i>
+                </div>
+                <div class="kpi-value" id="kpi-rms-current">23.6 A</div>
+                <div class="kpi-sub highlight-green"><i class="fa-solid fa-arrow-down"></i> <span id="kpi-rms-red">21.4%</span> Lower Stress</div>
+            </div>
+
+            <div class="kpi-card glow-purple">
+                <div class="kpi-header">
+                    <span>Battery I²R Losses</span>
+                    <i class="fa-solid fa-fire-flame-curved"></i>
+                </div>
+                <div class="kpi-value" id="kpi-losses">74.3 kJ</div>
+                <div class="kpi-sub highlight-green"><i class="fa-solid fa-leaf"></i> <span id="kpi-loss-red">33.6%</span> Loss Savings</div>
+            </div>
+
+            <div class="kpi-card glow-green">
+                <div class="kpi-header">
+                    <span>SC Transient Buffer</span>
+                    <i class="fa-solid fa-car-battery"></i>
+                </div>
+                <div class="kpi-value" id="kpi-sc-power">58.6 kW</div>
+                <div class="kpi-sub highlight-cyan"><i class="fa-solid fa-shield-halved"></i> Burst Power Shield</div>
+            </div>
+
+            <div class="kpi-card glow-orange">
+                <div class="kpi-header">
+                    <span>Battery Thermal Rise</span>
+                    <i class="fa-solid fa-temperature-three-quarters"></i>
+                </div>
+                <div class="kpi-value" id="kpi-temp-rise">0.64 °C</div>
+                <div class="kpi-sub highlight-green"><i class="fa-solid fa-arrow-down"></i> <span id="kpi-temp-red">33.7%</span> Cooler Pack</div>
+            </div>
+        </section>
+
+        <!-- MAIN CONTENT LAYOUT: SIDEBAR + CHARTS -->
+        <main class="main-content">
+            <!-- PARAMETER CONTROL SIDEBAR -->
+            <aside class="control-panel glass-panel">
+                <div class="panel-header">
+                    <h3><i class="fa-solid fa-sliders"></i> Powertrain Tuning</h3>
+                </div>
+
+                <div class="control-group">
+                    <label>Drive Cycle Profile</label>
+                    <select id="param-cycle" class="custom-select">
+                        <option value="UDDS" selected>EPA UDDS (Urban City Driving)</option>
+                        <option value="WLTP">WLTP Class 3 (Combined)</option>
+                    </select>
+                </div>
+
+                <div class="control-group">
+                    <label>Vehicle Mass (kg): <span id="val-mass" class="val-badge">1500 kg</span></label>
+                    <input type="range" id="param-mass" min="1000" max="2500" step="50" value="1500">
+                </div>
+
+                <div class="control-group">
+                    <label>Battery Capacity (Ah): <span id="val-bat-cap" class="val-badge">50 Ah</span></label>
+                    <input type="range" id="param-bat-cap" min="25" max="100" step="5" value="50">
+                </div>
+
+                <div class="control-group">
+                    <label>Supercapacitor Stack (F): <span id="val-sc-cap" class="val-badge">58 F</span></label>
+                    <input type="range" id="param-sc-cap" min="20" max="120" step="2" value="58">
+                </div>
+
+                <div class="control-group">
+                    <label>LPF Cutoff Frequency (Hz): <span id="val-lpf" class="val-badge">0.05 Hz</span></label>
+                    <input type="range" id="param-lpf" min="0.01" max="0.20" step="0.01" value="0.05">
+                </div>
+
+                <button id="btn-simulate" class="btn-primary glow-btn">
+                    <i class="fa-solid fa-play"></i> Run HESS Simulation
+                </button>
+            </aside>
+
+            <!-- CHARTS & BENCHMARK TABS -->
+            <section class="visualization-area">
+                <div class="tab-navigation">
+                    <button class="tab-btn active" data-tab="tab-current"><i class="fa-solid fa-wave-square"></i> Current Peak-Shaving</button>
+                    <button class="tab-btn" data-tab="tab-power"><i class="fa-solid fa-bolt"></i> Power Allocation</button>
+                    <button class="tab-btn" data-tab="tab-soc"><i class="fa-solid fa-battery-half"></i> SOC & Supercap</button>
+                    <button class="tab-btn" data-tab="tab-losses"><i class="fa-solid fa-fire"></i> Losses & Thermal</button>
+                    <button class="tab-btn" data-tab="tab-dclink"><i class="fa-solid fa-plug"></i> 400V DC Bus</button>
+                    <button class="tab-btn" data-tab="tab-table"><i class="fa-solid fa-table"></i> Benchmark Table</button>
+                </div>
+
+                <!-- TAB 1: CURRENT PEAK SHAVING -->
+                <div class="tab-content active" id="tab-current">
+                    <div class="chart-container glass-panel">
+                        <div class="chart-header">
+                            <h4>Battery Current Profile (Battery-Only Baseline vs. HESS LPF)</h4>
+                            <span class="chart-tag">Peak Shaving Verification</span>
+                        </div>
+                        <div class="canvas-wrapper">
+                            <canvas id="chartCurrent"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- TAB 2: POWER ALLOCATION -->
+                <div class="tab-content" id="tab-power">
+                    <div class="chart-container glass-panel">
+                        <div class="chart-header">
+                            <h4>Frequency Decoupled Power Split (Battery vs. Supercapacitor)</h4>
+                            <span class="chart-tag">LPF Spectrum Split</span>
+                        </div>
+                        <div class="canvas-wrapper">
+                            <canvas id="chartPower"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- TAB 3: SOC & SUPERCAP VOLTAGE -->
+                <div class="tab-content" id="tab-soc">
+                    <div class="chart-grid">
+                        <div class="chart-container glass-panel">
+                            <div class="chart-header"><h4>Battery State of Charge (%)</h4></div>
+                            <div class="canvas-wrapper"><canvas id="chartSOCBat"></canvas></div>
+                        </div>
+                        <div class="chart-container glass-panel">
+                            <div class="chart-header"><h4>Supercapacitor Voltage (V) & Energy</h4></div>
+                            <div class="canvas-wrapper"><canvas id="chartVSC"></canvas></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- TAB 4: LOSSES & THERMAL -->
+                <div class="tab-content" id="tab-losses">
+                    <div class="chart-grid">
+                        <div class="chart-container glass-panel">
+                            <div class="chart-header"><h4>Cumulative Battery I²R Electrical Losses (kJ)</h4></div>
+                            <div class="canvas-wrapper"><canvas id="chartLosses"></canvas></div>
+                        </div>
+                        <div class="chart-container glass-panel">
+                            <div class="chart-header"><h4>Battery Pack Thermal Temperature Rise (°C)</h4></div>
+                            <div class="canvas-wrapper"><canvas id="chartThermal"></canvas></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- TAB 5: 400V DC BUS -->
+                <div class="tab-content" id="tab-dclink">
+                    <div class="chart-container glass-panel">
+                        <div class="chart-header">
+                            <h4>400V DC Bus Voltage Stability & Converter Ripple Control</h4>
+                            <span class="chart-tag">Target: 400V ± 1.0V</span>
+                        </div>
+                        <div class="canvas-wrapper">
+                            <canvas id="chartDCLink"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- TAB 6: COMPARISON BENCHMARK TABLE -->
+                <div class="tab-content" id="tab-table">
+                    <div class="glass-panel table-panel">
+                        <h3>Detailed Powertrain Performance Comparison</h3>
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Metric Parameter</th>
+                                    <th>Case A: Battery-Only</th>
+                                    <th>Case B1: HESS Rule-Based</th>
+                                    <th>Case B2: HESS LPF</th>
+                                    <th>LPF Improvement</th>
+                                </tr>
+                            </thead>
+                            <tbody id="table-body">
+                                <!-- Populated dynamically -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script src="/static/js/dashboard.js"></script>
+</body>
+</html>
